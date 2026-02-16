@@ -1,0 +1,36 @@
+name: Add to Project (User Template)
+
+# ==============================================================================
+# 使い方 (Usage)
+# 1. このファイルを .github/workflows/add-to-project-<YOUR_NAME>.yml にコピーします。
+# 2. 以下の <PLACEHOLDER> をあなたの情報に書き換えてください。
+#    - <YOUR_GITHUB_USERNAME>: あなたのGitHubユーザー名 (例: yamada)
+#    - <YOUR_PROJECT_NUMBER>: 連携したいProjectの番号 (例: 10)
+#    - <YOUR_PAT_SECRET_NAME>: 使用するPATが格納されたSecrets名 (例: YAMADA_PAT)
+# ==============================================================================
+
+on:
+  issues:
+    types: [assigned]
+
+jobs:
+  add_to_project:
+    runs-on: ubuntu-latest
+    # 自分のアサイン時のみ実行
+    if: contains(github.event.issue.assignees.*.login, '<YOUR_GITHUB_USERNAME>')
+    steps:
+      - name: Add to Project
+        env:
+          GH_TOKEN: ${{ secrets.<YOUR_PAT_SECRET_NAME> }}
+          PROJECT_NUMBER: <YOUR_PROJECT_NUMBER>
+          ORGANIZATION: HinotoAI
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "Error: Secret ${{ env.GH_TOKEN }} is missing."
+            exit 1
+          fi
+          
+          echo "Adding issue to Project $PROJECT_NUMBER in $ORGANIZATION..."
+
+          # Add Item to Project
+          gh project item-add "$PROJECT_NUMBER" --owner "$ORGANIZATION" --url "${{ github.event.issue.html_url }}"

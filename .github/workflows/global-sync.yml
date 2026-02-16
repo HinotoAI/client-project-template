@@ -1,0 +1,25 @@
+name: Global Issue Sync (Template)
+
+on:
+  issues:
+    types: [opened, reopened, transferred]
+
+jobs:
+  add_to_project_global:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add to Project
+        env:
+          GH_TOKEN: ${{ secrets.AKAZAWA_PAT }}
+          # TODO: à»â∫ÇÃêîílÇê≥ÇµÇ¢Project NumberÇ…ïœçXÇµÇƒÇ≠ÇæÇ≥Ç¢
+          PROJECT_NUMBER: 9999
+          ORGANIZATION: HinotoAI
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "Error: Secret AKAZAWA_PAT is missing."
+            exit 1
+          fi
+          
+          echo "Adding issue #${{ github.event.issue.number }} to Project $PROJECT_NUMBER in $ORGANIZATION..."
+
+          gh project item-add "$PROJECT_NUMBER" --owner "$ORGANIZATION" --url "${{ github.event.issue.html_url }}"
