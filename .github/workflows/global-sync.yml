@@ -12,7 +12,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AKAZAWA_PAT }}
           # TODO: ˆÈ‰º‚Ì”’l‚ð³‚µ‚¢Project Number‚É•ÏX‚µ‚Ä‚­‚¾‚³‚¢
-          PROJECT_NUMBER: 9999
+          PROJECT_NUMBER: 9
           ORGANIZATION: HinotoAI
         run: |
           if [ -z "$GH_TOKEN" ]; then
