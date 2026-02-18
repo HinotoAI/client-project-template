@@ -61,7 +61,8 @@ create_issue() {
       gh issue create \
         --title "$title" \
         --body "$body" \
-        --label "$labels"
+        --label "$labels" \
+        --assignee "@me"
       echo "? Issue を作成しました"
     fi
   fi
