@@ -28,18 +28,21 @@ get_issue_status() {
 # ---------------------------------------------------------------------------
 # task.md から Issue 番号と完了状態を抽出
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# task.md から Issue 番号と完了状態を抽出
+# ---------------------------------------------------------------------------
 parse_task_md() {
   # [x] または [ ] の行のみを抽出し、Issue 番号 (#N) があるものを取得
-  grep -E '^\s*- \[(x| )\].*\[#[0-9]+\]' "$TASK_FILE" | while IFS= read -r line; do
+  LC_ALL=C grep -E '^[[:space:]]*- \[(x| )\]' "$TASK_FILE" | LC_ALL=C grep '\[#[0-9]\+\]' | while IFS= read -r line; do
     # チェック状態を判定
-    if echo "$line" | grep -q '^\s*- \[x\]'; then
+    if echo "$line" | LC_ALL=C grep -q '^[[:space:]]*- \[x\]'; then
       status="completed"
     else
       status="open"
     fi
     
     # Issue 番号を抽出
-    issue_num=$(echo "$line" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+    issue_num=$(echo "$line" | LC_ALL=C grep -oE '#[0-9]+' | head -1 | tr -d '#')
     
     if [[ -n "$issue_num" ]]; then
       echo "$issue_num|$status"
@@ -59,9 +62,9 @@ sync_issue_to_task() {
   
   while IFS='|' read -r number title state; do
     # task.md での該当行を検索
-    if grep -q "\[#$number\]" "$TASK_FILE"; then
+    if LC_ALL=C grep -q "\[#$number\]" "$TASK_FILE"; then
       local current_status
-      if grep "\[#$number\]" "$TASK_FILE" | grep -q '^\s*- \[x\]'; then
+      if LC_ALL=C grep "\[#$number\]" "$TASK_FILE" | LC_ALL=C grep -q '^[[:space:]]*- \[x\]'; then
         current_status="completed"
       else
         current_status="open"
@@ -74,19 +77,20 @@ sync_issue_to_task() {
         
         if ! $DRY_RUN; then
           # task.md のチェックボックスを [x] に変更
-          sed -i.bak -E "s/(- \[) (\].*\[#$number\])/\1x\2/" "$TASK_FILE"
+          LC_ALL=C sed -i.bak -E "s/(- \[) (\].*\[#$number\])/\1x\2/" "$TASK_FILE"
         fi
       fi
       
       # Issue がオープンだが task.md で完了済みの場合
-      if [[ "$state" == "OPEN" && "$current_status" == "completed" ]]; then
-        echo "  Issue #$number: OPEN → task.md を [ ] に戻す"
-        has_changes=true
-        
-        if ! $DRY_RUN; then
-          sed -i.bak -E "s/(- \[)x(\].*\[#$number\])/\1 \2/" "$TASK_FILE"
-        fi
-      fi
+      # task.md で完了にした場合、後続の sync_task_to_issue で Issue をクローズするため、ここでは戻さない
+      # if [[ "$state" == "OPEN" && "$current_status" == "completed" ]]; then
+      #   echo "  Issue #$number: OPEN → task.md を [ ] に戻す"
+      #   has_changes=true
+      #   
+      #   if ! $DRY_RUN; then
+      #     LC_ALL=C sed -i.bak -E "s/(- \[)x(\].*\[#$number\])/\1 \2/" "$TASK_FILE"
+      #   fi
+      # fi
     fi
   done < <(get_issue_status)
   
@@ -142,6 +146,69 @@ sync_task_to_issue() {
   fi
 }
 
+
+# ---------------------------------------------------------------------------
+# task.md から Issue を自動作成（[#N] がないタスクを対象）
+# ---------------------------------------------------------------------------
+create_issues_from_task_md() {
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "? task.md → Issue の作成（新規タスク）"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  
+  local has_changes=false
+  # 一時ファイルを使用せず、行ごとに処理するためにループ
+  # 注意: 行番号が変わると sed がずれる可能性があるため、逆順処理などは難しい。
+  # ここでは単純にファイルを読み込み、マッチした行を処理する。
+  
+  # 変更を行うため、一時ファイルにコピーして作業
+  cp "$TASK_FILE" "$TASK_FILE.tmp"
+  
+  while IFS= read -r line; do
+    # - [ ] または - [x] で始まり、かつ [#N] を持たない行を検索
+    # LC_ALL=C でバイト列として処理（エンコーディング問題を回避）
+    if echo "$line" | LC_ALL=C grep -E -q '^[[:space:]]*- \[( |x)\] ' && ! echo "$line" | LC_ALL=C grep -E -q '\[#[0-9]+\]'; then
+      
+      # インデントとタスク内容を抽出
+      indent=$(echo "$line" | LC_ALL=C grep -oE '^[[:space:]]*')
+      status_mark=$(echo "$line" | LC_ALL=C grep -oE '\[( |x)\]')
+      task_content=$(echo "$line" | LC_ALL=C sed -E 's/^[[:space:]]*- \[( |x)\] //')
+      
+      # 空のタスクはスキップ
+      if [[ -z "$task_content" ]]; then continue; fi
+      
+      echo "  新規タスク検出: $task_content"
+      has_changes=true
+      
+      if $DRY_RUN; then
+        # 表示用に変換（失敗したらそのまま）
+        echo "    [DRY-RUN] Issue 作成: $task_content"
+      else
+        # Issue 作成
+        echo "    Issue を作成中..."
+        new_issue_url=$(gh issue create --title "$task_content" --body "From task.md" --assignee "@me" 2>/dev/null)
+        new_issue_num=$(echo "$new_issue_url" | awk -F'/' '{print $NF}')
+        
+        echo "    ✓ 作成完了: #$new_issue_num"
+        
+        # task.md の該当行を更新
+        # 特殊文字のエスケープ処理が必要（sedの置換条件式で使うため）
+        # \ [ ] * . ^ $ | & をエスケープ
+        escaped_content=$(echo "$task_content" | LC_ALL=C sed 's/\\/\\\\/g' | LC_ALL=C sed 's/\[/\\[/g' | LC_ALL=C sed 's/\]/\\]/g' | LC_ALL=C sed 's/\*/\\*/g' | LC_ALL=C sed 's/\./\\./g' | LC_ALL=C sed 's/\^/\\^/g' | LC_ALL=C sed 's/\$/\\$/g' | LC_ALL=C sed 's/|/\\|/g' | LC_ALL=C sed 's/&/\\&/g')
+        
+        # 行全体を置換対象にする
+        LC_ALL=C sed -i.bak "s|^\(${indent}- ${status_mark}\) ${escaped_content}\$|\1 ${escaped_content} [#${new_issue_num}](${new_issue_url})|" "$TASK_FILE"
+      fi
+    fi
+  done < "$TASK_FILE.tmp"
+  
+  rm -f "$TASK_FILE.tmp"
+  
+  if ! $has_changes; then
+    echo "  新規タスクなし"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # メイン
 # ---------------------------------------------------------------------------
@@ -153,6 +220,7 @@ else
 fi
 echo "========================================"
 
+create_issues_from_task_md
 sync_issue_to_task
 sync_task_to_issue
 
