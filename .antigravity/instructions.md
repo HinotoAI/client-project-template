@@ -55,3 +55,17 @@ Issue の担当者に `Sokan3` が設定された場合、自動的に Project 10 (Sokan3's Projec
 - `.github/workflows/`: GitHub Actions 定義
   - `global-sync.yml`: 全件同期用 (要編集)
   - `add-to-project-sokan3.yml`: Sokan3用 (サンプル)
+
+
+---
+## タスク・メモの双方向同期 (sync_memos.py)
+
+全リポジトリのタスクとメモを一括で同期するためのスクリプトです。
+以下のコマンドを実行することで、GitHub Issues とローカルの `inbox/` `output/` フォルダの双方向同期が行われます。
+
+```bash
+python3 /Users/waso/Hinoto/general/scripts/sync_memos.py
+```
+
+- **GitHub → Local**: 自身にアサインされたIssueを取得し、`inbox/` にMarkdownファイルを作成します。Issue側にはObsidianで開くためのURIが記録されます。Issueがクローズされると、ファイルは自動的に `output/` に移動します。
+- **Local → GitHub**: `inbox/` フォルダ内に新しいMarkdownファイルを作成すると、同名のGitHub Issueが自動作成され、Project(HinotoAI)ボードに登録されます。
