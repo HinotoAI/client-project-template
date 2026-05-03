@@ -1,0 +1,22 @@
+name: Add to Project 10
+
+on:
+  issues:
+    types: [assigned]
+
+jobs:
+  add_to_project:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.assignees.*.login, 'Sokan3')
+    steps:
+      - name: Add to Project
+        env:
+          GH_TOKEN: ${{ secrets.AKAZAWA_PAT }}
+          PROJECT_NUMBER: 10
+          ORGANIZATION: HinotoAI
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "Error: AKAZAWA_PAT secret is missing."
+            exit 1
+          fi
+          gh project item-add "$PROJECT_NUMBER" --owner "$ORGANIZATION" --url "${{ github.event.issue.html_url }}"
