@@ -1,22 +1,67 @@
-name: Add to Project 10
+name: Sync to Project 10
 
 on:
   issues:
-    types: [assigned]
+    types: [assigned, labeled, unlabeled]
 
 jobs:
-  add_to_project:
+  sync:
     runs-on: ubuntu-latest
     if: contains(github.event.issue.assignees.*.login, 'Sokan3')
     steps:
-      - name: Add to Project
+      - name: Add to Project and sync Priority
         env:
           GH_TOKEN: ${{ secrets.AKAZAWA_PAT }}
-          PROJECT_NUMBER: 10
-          ORGANIZATION: HinotoAI
+          PROJECT_ID: PVT_kwDODRV6fM4BPWR_
+          PRIORITY_FIELD_ID: PVTSSF_lADODRV6fM4BPWR_zhR3jxI
+          P0_OPTION: 0b42dd1f
+          P1_OPTION: 0325d1c5
+          P2_OPTION: 5a52497e
+          ISSUE_NODE_ID: ${{ github.event.issue.node_id }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
+          set -e
           if [ -z "$GH_TOKEN" ]; then
             echo "Error: AKAZAWA_PAT secret is missing."
             exit 1
           fi
-          gh project item-add "$PROJECT_NUMBER" --owner "$ORGANIZATION" --url "${{ github.event.issue.html_url }}"
+
+          # Add to project (idempotent: returns existing item if already added)
+          ITEM_ID=$(gh api graphql -f query='
+            mutation($project: ID!, $content: ID!) {
+              addProjectV2ItemById(input: {projectId: $project, contentId: $content}) {
+                item { id }
+              }
+            }' -f project="$PROJECT_ID" -f content="$ISSUE_NODE_ID" \
+            --jq '.data.addProjectV2ItemById.item.id')
+          echo "Item ID: $ITEM_ID"
+
+          # Read labels and pick priority option
+          LABELS=$(gh api "/repos/$REPO/issues/$ISSUE_NUMBER/labels" --jq '.[].name')
+          OPTION_ID=""
+          if echo "$LABELS" | grep -qx "priority:p0"; then OPTION_ID="$P0_OPTION"
+          elif echo "$LABELS" | grep -qx "priority:p1"; then OPTION_ID="$P1_OPTION"
+          elif echo "$LABELS" | grep -qx "priority:p2"; then OPTION_ID="$P2_OPTION"
+          fi
+
+          if [ -n "$OPTION_ID" ]; then
+            echo "Setting Priority option: $OPTION_ID"
+            gh api graphql -f query='
+              mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $project, itemId: $item, fieldId: $field,
+                  value: {singleSelectOptionId: $option}
+                }) { projectV2Item { id } }
+              }' -f project="$PROJECT_ID" -f item="$ITEM_ID" \
+                 -f field="$PRIORITY_FIELD_ID" -f option="$OPTION_ID" >/dev/null
+          else
+            echo "No priority label, clearing Priority field"
+            gh api graphql -f query='
+              mutation($project: ID!, $item: ID!, $field: ID!) {
+                clearProjectV2ItemFieldValue(input: {
+                  projectId: $project, itemId: $item, fieldId: $field
+                }) { projectV2Item { id } }
+              }' -f project="$PROJECT_ID" -f item="$ITEM_ID" \
+                 -f field="$PRIORITY_FIELD_ID" >/dev/null
+          fi
